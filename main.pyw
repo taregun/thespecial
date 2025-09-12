@@ -317,7 +317,7 @@ def main():
         pass
 
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
-    pygame.display.set_caption("The special alpha 0.5")
+    pygame.display.set_caption("The special beta 0.5")
     clock = pygame.time.Clock()
     font = pygame.font.SysFont("Arial", 28, bold=True)
     try:
@@ -914,7 +914,7 @@ def main():
             delete_checkpoint()
             running = False
             continue
-        
+
         if not fading:
             # For collisions, only use nearby obstacles (player-sized vicinity)
             nearby_obs = get_nearby_obstacles(player.rect, obstacles_list + tree2_objs)
@@ -1217,7 +1217,7 @@ def main():
             screen.blit(txt, (x + 10, y + 6))
 
         # version / day text / hearts (unchanged)
-        version_text = "Alpha 0.5"
+        version_text = "beta 0.5"
         txt = font.render(version_text, True, (255, 255, 255))
         for dx, dy in [(-2, 0), (2, 0), (0, -2), (0, 2)]:
             screen.blit(font.render(version_text, True, (0, 0, 0)), (10 + dx, 10 + dy))
