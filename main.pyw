@@ -914,6 +914,7 @@ def main():
             delete_checkpoint()
             running = False
             continue
+        
         if not fading:
             # For collisions, only use nearby obstacles (player-sized vicinity)
             nearby_obs = get_nearby_obstacles(player.rect, obstacles_list + tree2_objs)
