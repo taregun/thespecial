@@ -1,7 +1,7 @@
-# editor.pyw
 """
 editor.pyw
 Map editor for "The special" with Dirt background placement
+Added: checkpoint placement support ("checkpoint.png").
 """
 
 import pygame
@@ -27,7 +27,10 @@ ASSETS = {
     "goffyDog": "goffyDog.png",
     # unknown NPC asset
     "unknown": "unknown.png",
+    # checkpoint asset (optional)
+    "checkpoint": "checkpoint.png",
 }
+
 
 def load_image(name, colorkey=None):
     path = Path(name)
@@ -37,6 +40,7 @@ def load_image(name, colorkey=None):
     if colorkey is not None:
         img.set_colorkey(colorkey)
     return img
+
 
 def scale_to_tile(img, tile_w=TILE, tile_h=TILE, keep_aspect=True):
     w, h = img.get_size()
@@ -48,6 +52,7 @@ def scale_to_tile(img, tile_w=TILE, tile_h=TILE, keep_aspect=True):
         nw, nh = int(tile_w), int(tile_h)
     return pygame.transform.scale(img, (nw, nh))
 
+
 class Camera:
     def __init__(self, screen_w, screen_h):
         self.screen_w, self.screen_h = screen_w, screen_h
@@ -55,6 +60,7 @@ class Camera:
     def update(self, target_rect):
         self.offset.x = target_rect.centerx - self.screen_w // 2
         self.offset.y = target_rect.centery - self.screen_h // 2
+
 
 class WorldObject(pygame.sprite.Sprite):
     def __init__(self, image, tile_w=1, tile_h=1, pos=(0,0), name="", solid=True):
@@ -64,6 +70,7 @@ class WorldObject(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(topleft=pos)
         self.name = name
         self.solid = solid
+
 
 class Player(pygame.sprite.Sprite):
     def __init__(self, image, pos, scale=1):
@@ -90,6 +97,7 @@ class Player(pygame.sprite.Sprite):
         self.vel = dir * PLAYER_SPEED
         self.pos += self.vel * dt
         self.rect.topleft = (int(self.pos.x), int(self.pos.y))
+
 
 def main():
     pygame.init()
@@ -136,21 +144,37 @@ def main():
         background_tiles.add(obj)
         map_objects.append({"type": "dirt", "x": grid_x, "y": grid_y})
 
+    def make_placeholder(tile_w, tile_h, label=None):
+        surf = pygame.Surface((int(tile_w*TILE), int(tile_h*TILE)), pygame.SRCALPHA)
+        surf.fill((200, 50, 200, 180))
+        pygame.draw.line(surf, (0,0,0), (0,0), (surf.get_width(), surf.get_height()), 2)
+        pygame.draw.line(surf, (0,0,0), (surf.get_width(),0), (0,surf.get_height()), 2)
+        if label:
+            try:
+                f = pygame.font.SysFont(None, 16)
+                txt = f.render(label, True, (0,0,0))
+                surf.blit(txt, (4,4))
+            except Exception:
+                pass
+        return surf
+
     def add_obj(key, grid_x, grid_y, tile_w=1, tile_h=1):
         pos = (grid_x*TILE, grid_y*TILE)
-        if key not in imgs:
-            print(f"Cannot place '{key}': asset missing.")
-            return None
-        obj = WorldObject(imgs[key], tile_w, tile_h, pos, name=key)
+        img = imgs.get(key)
+        if img is None:
+            # allow placing checkpoint (or other objects) even if asset missing — create placeholder
+            img = make_placeholder(tile_w, tile_h, label=key)
+        obj = WorldObject(img, tile_w, tile_h, pos, name=key)
         objects.add(obj)
-        # Save a normalized type string for Maps.json
-        # For keys that should be lowercase "unknown" we'll store them lowercased
+        # Normalize save_type so main loader recognizes it
         save_type = key
-        # normalize common mis-cases so the main loader recognizes them reliably
-        if key.lower() == "goffydog" or key.lower() == "goffydog":
+        # common normalizations
+        if key.lower() in ("goffydog", "goffydog"):
             save_type = "goffydog"
         if key.lower() == "unknown":
             save_type = "unknown"
+        if key.lower() == "checkpoint":
+            save_type = "checkpoint"
         map_objects.append({"type": save_type, "x": grid_x, "y": grid_y})
         return obj
 
@@ -170,11 +194,13 @@ def main():
                 add_obj("treadmill", x, y, tile_w=6, tile_h=8)
             elif t == "dirt":
                 add_dirt(x, y)
-            elif t in ("goffydog", "goffydog".lower(), "goffydog".upper()):
+            elif t in ("goffydog", "goffydog"):
                 # support existing naming variants
                 add_obj("goffyDog", x, y, tile_w=2, tile_h=2)
             elif t == "unknown":
                 add_obj("unknown", x, y, tile_w=2, tile_h=2)
+            elif t == "checkpoint":
+                add_obj("checkpoint", x, y, tile_w=2, tile_h=2)
             else:
                 # generic object (girlfriend, john, mom, etc.)
                 # try original case first; otherwise lowercased key
@@ -200,7 +226,7 @@ def main():
     camera = Camera(SCREEN_W, SCREEN_H)
 
     # Scrollable object selection. Note: keys must match ASSETS keys (case-sensitive).
-    place_keys = ["girlfriend", "john", "mom", "tree", "tree2", "treadmill", "goffyDog", "unknown", "dirt", "delete"]
+    place_keys = ["girlfriend", "john", "mom", "tree", "tree2", "treadmill", "goffyDog", "unknown", "checkpoint", "dirt", "delete"]
     current_index = 0
 
     running = True
@@ -238,6 +264,8 @@ def main():
                         add_obj("goffyDog", gx, gy, tile_w=2, tile_h=2)
                     elif current_obj == "unknown":
                         add_obj("unknown", gx, gy, tile_w=2, tile_h=2)
+                    elif current_obj == "checkpoint":
+                        add_obj("checkpoint", gx, gy, tile_w=2, tile_h=2)
                     else:
                         add_obj(current_obj, gx, gy)
                 elif ev.button == 4:  # scroll up
@@ -267,6 +295,7 @@ def main():
 
         # Draw placed objects (sorted by bottom)
         for obj in sorted(objects, key=lambda o:o.rect.bottom):
+            # if checkpoint asset available use it; otherwise object.image already holds either real or placeholder
             screen.blit(obj.image, (obj.rect.x - camera.offset.x, obj.rect.y - camera.offset.y))
 
         # Draw player
@@ -292,6 +321,7 @@ def main():
 
     pygame.quit()
     sys.exit()
+
 
 if __name__ == "__main__":
     main()

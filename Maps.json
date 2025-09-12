@@ -12293,10 +12293,55 @@
       "type": "treadmill",
       "x": 43,
       "y": -156
+    },
+    {
+      "type": "checkpoint",
+      "x": -12,
+      "y": -25
+    },
+    {
+      "type": "checkpoint",
+      "x": 14,
+      "y": -28
+    },
+    {
+      "type": "checkpoint",
+      "x": 38,
+      "y": -35
+    },
+    {
+      "type": "checkpoint",
+      "x": 52,
+      "y": -42
+    },
+    {
+      "type": "checkpoint",
+      "x": 66,
+      "y": -26
+    },
+    {
+      "type": "checkpoint",
+      "x": 87,
+      "y": -50
+    },
+    {
+      "type": "checkpoint",
+      "x": 16,
+      "y": -87
+    },
+    {
+      "type": "checkpoint",
+      "x": 44,
+      "y": -117
+    },
+    {
+      "type": "checkpoint",
+      "x": -5,
+      "y": -4
     }
   ],
   "player": {
     "x": -14,
-    "y": 2
+    "y": 1
   }
 }

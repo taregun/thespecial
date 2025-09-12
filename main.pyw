@@ -44,7 +44,10 @@ ASSETS = {
     "heart": "TheSpetial.png",
     "goofyDog": "goffyDog.png",
     "unknown": "unknown.png",   # lowercase key
+    "checkpoint": "checkpoint.png",  # new asset (optional — placeholder drawn if missing)
 }
+
+CHECKPOINT_FILE = Path("checkpoint.txt")
 
 
 def load_image(name, colorkey=None):
@@ -394,6 +397,15 @@ def main():
         except Exception:
             pass
 
+    # checkpoint image optional
+    if "checkpoint" not in imgs:
+        try:
+            p = Path(ASSETS.get("checkpoint", ""))
+            if p.exists():
+                imgs["checkpoint"] = load_image(str(p))
+        except Exception:
+            pass
+
     required = ["intro1", "intro2", "player", "player1", "tile", "dirt", "girlfriend", "john", "message", "message2", "message3", "message4", "end", "wolf1", "wolf2", "heart"]
     for r in required:
         if r not in imgs:
@@ -465,6 +477,7 @@ def main():
     tree2_objs = []
     goofy_objs = []   # supports multiple goofy dogs
     unknown_objs = []  # supports multiple unknown entities
+    checkpoint_objs = []  # new
 
     def add_dirt(grid_x, grid_y):
         img = imgs["dirt"]
@@ -518,6 +531,9 @@ def main():
             elif t == "unknown":
                 u = add_obj("unknown", x, y, tile_w=2, tile_h=2, solid=False)
                 unknown_objs.append(u)
+            elif t == "checkpoint":
+                c = add_obj("checkpoint", x, y, tile_w=2, tile_h=2, solid=False)
+                checkpoint_objs.append(c)
             else:
                 if typ in ASSETS:
                     add_obj(typ, x, y)
@@ -538,6 +554,9 @@ def main():
         goofy_objs.append(g)
         u = add_obj("unknown", 16, 9, 2, 2, solid=False)
         unknown_objs.append(u)
+        # default checkpoint in fallback map
+        c = add_obj("checkpoint", 8, 8, 2, 2, solid=False)
+        checkpoint_objs.append(c)
 
     if mapdata and "player" in mapdata:
         p = mapdata["player"]
@@ -579,8 +598,8 @@ def main():
         treadmill_obj.block_rect = pygame.Rect(hitbox_x, hitbox_y, hitbox_w, hitbox_h)
         treadmill_obj.interaction_rect = pygame.Rect(hitbox_x, hitbox_y, hitbox_w, hitbox_h)
 
-    # For goofy dogs and unknowns: only create interaction rect (no block_rect so they don't pre-block)
-    for g in goofy_objs + unknown_objs:
+    # For goofy dogs, unknowns, and checkpoints: only create interaction rect (no block_rect so they don't pre-block)
+    for g in goofy_objs + unknown_objs + checkpoint_objs:
         tw, th = g.rect.width, g.rect.height
         hitbox_w = int(tw / 2)
         hitbox_h = int(th / 3)
@@ -610,6 +629,13 @@ def main():
             unknown_img = scale_to_tile(imgs["unknown"], TILE * 2, TILE * 2, keep_aspect=True)
         except Exception:
             unknown_img = imgs["unknown"]
+
+    checkpoint_img = None
+    if "checkpoint" in imgs:
+        try:
+            checkpoint_img = scale_to_tile(imgs["checkpoint"], TILE * 2, TILE * 2, keep_aspect=True)
+        except Exception:
+            checkpoint_img = imgs.get("checkpoint")
 
     showing_message = False
     current_message = None
@@ -695,6 +721,96 @@ def main():
         r = reference_rect.inflate(expand, expand)
         return [o for o in obstacles if getattr(o, "solid", False) and r.colliderect(get_collision_rect(o))]
 
+    # ----------------------
+    # checkpoint helpers
+    # ----------------------
+    def save_checkpoint():
+        data = {
+            "player_pos": [int(player.rect.x), int(player.rect.y)],
+            "camera_offset": [float(camera.offset.x), float(camera.offset.y)],
+            "is_day": bool(is_day),
+            "day_night_timer": float(day_night_timer),
+            "girlfriend_following": bool(girlfriend_following),
+            "john_stopped": bool(john_stopped),
+            "treadmill_activated": bool(treadmill_activated),
+            "lives": int(lives),
+            "girlfriend_pos": [int(girlfriend_obj.rect.x), int(girlfriend_obj.rect.y)] if girlfriend_obj else None,
+            "john_pos": [int(john_obj.rect.x), int(john_obj.rect.y)] if john_obj else None,
+            "wolf_active": bool(wolf.active),
+            "wolf_rect": [int(wolf.rect.x), int(wolf.rect.y)] if wolf else None,
+            # add more fields if you want to persist more things
+            "saved_at": time.time(),
+        }
+        try:
+            with CHECKPOINT_FILE.open("w", encoding="utf-8") as f:
+                json.dump(data, f)
+            return True
+        except Exception as e:
+            if DEBUG:
+                print("Failed to save checkpoint:", e)
+            return False
+
+    def load_checkpoint():
+        nonlocal is_day, day_night_timer, girlfriend_following, john_stopped, treadmill_activated, lives
+        if not CHECKPOINT_FILE.exists():
+            return False
+        try:
+            with CHECKPOINT_FILE.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            return False
+        try:
+            pp = data.get("player_pos")
+            if pp:
+                player.pos = pygame.Vector2(pp[0], pp[1])
+                player.rect.topleft = (int(pp[0]), int(pp[1]))
+            cam = data.get("camera_offset")
+            if cam:
+                camera.offset.x = float(cam[0])
+                camera.offset.y = float(cam[1])
+            is_day = bool(data.get("is_day", True))
+            day_night_timer = float(data.get("day_night_timer", 0.0))
+            girlfriend_following = bool(data.get("girlfriend_following", False))
+            john_stopped = bool(data.get("john_stopped", False))
+            treadmill_activated = bool(data.get("treadmill_activated", False))
+            lives = int(data.get("lives", MAX_LIVES))
+            gp = data.get("girlfriend_pos")
+            if gp and girlfriend_obj:
+                girlfriend_obj.rect.topleft = (int(gp[0]), int(gp[1]))
+            jp = data.get("john_pos")
+            if jp and john_obj:
+                john_obj.rect.topleft = (int(jp[0]), int(jp[1]))
+            if data.get("wolf_active") and wolf:
+                wolf.active = True
+                wr = data.get("wolf_rect")
+                if wr:
+                    wolf.rect.x = int(wr[0])
+                    wolf.rect.y = int(wr[1])
+            return True
+        except Exception as e:
+            if DEBUG:
+                print("Failed to apply checkpoint data:", e)
+            return False
+
+    def delete_checkpoint():
+        try:
+            if CHECKPOINT_FILE.exists():
+                CHECKPOINT_FILE.unlink()
+        except Exception:
+            pass
+
+    # Attempt to load checkpoint (if exists) AFTER objects/player created
+    loaded_checkpoint = load_checkpoint()
+    if loaded_checkpoint:
+        # If checkpoint had treadmill already activated, we shouldn't immediately end,
+        # but if the user intended finished state, we'll let existing logic handle it.
+        if DEBUG:
+            print("Loaded checkpoint from", CHECKPOINT_FILE)
+
+    # short overlay for checkpoint saved notification
+    checkpoint_saved_timer = 0.0
+    CHECKPOINT_SAVED_DURATION = 2.0
+
     running = True
     while running:
         dt = clock.tick(60) / 1000.0
@@ -745,6 +861,9 @@ def main():
                     goofy_timer = 0.0
 
         if treadmill_activated:
+            # delete checkpoint when the game is finished (as requested)
+            delete_checkpoint()
+
             screen.fill((0, 0, 0))
             if end_img:
                 screen.blit(end_img, (0, 0))
@@ -938,6 +1057,22 @@ def main():
                             pass
                 u.player_near = now_near
 
+            # Checkpoint trigger: save when player enters the interaction rect
+            for c in checkpoint_objs:
+                now_near = player.rect.colliderect(get_interaction_rect(c))
+                prev_near = getattr(c, "player_near", False)
+                if now_near and (not prev_near):
+                    ok = save_checkpoint()
+                    checkpoint_saved_timer = CHECKPOINT_SAVED_DURATION
+                    # play beep
+                    try:
+                        message_beeps[0].play()
+                    except Exception:
+                        pass
+                    if DEBUG:
+                        print("Checkpoint saved:", CHECKPOINT_FILE if ok else "failed")
+                c.player_near = now_near
+
         camera.update(player.rect)
 
         # ------------------------
@@ -984,6 +1119,9 @@ def main():
             draw_img = getattr(ent, "image", None)
             if draw_img is None:
                 continue
+            # custom draw for checkpoints to show checkpoint_img if present
+            if getattr(ent, "name", None) == "checkpoint" and checkpoint_img is not None:
+                draw_img = checkpoint_img
             # flip on the fly only when necessary (cheap compared to scaling)
             if getattr(ent, "last_x_dir", 1) < 0:
                 draw_img = pygame.transform.flip(draw_img, True, False)
@@ -1030,6 +1168,18 @@ def main():
             night_overlay.fill((0, 0, 0, current_dn_alpha))
             screen.blit(night_overlay, (0, 0))
 
+        # checkpoint saved small overlay
+        if checkpoint_saved_timer > 0:
+            checkpoint_saved_timer -= dt
+            msg = "Checkpoint saved"
+            txt = font.render(msg, True, (200, 255, 200))
+            bg = pygame.Surface((txt.get_width() + 20, txt.get_height() + 12), pygame.SRCALPHA)
+            bg.fill((0, 0, 0, 180))
+            x = (SCREEN_W - bg.get_width()) // 2
+            y = 10
+            screen.blit(bg, (x, y))
+            screen.blit(txt, (x + 10, y + 6))
+
         # version / day text / hearts (unchanged)
         version_text = "Alpha 0.5"
         txt = font.render(version_text, True, (255, 255, 255))
@@ -1067,20 +1217,41 @@ def main():
                 fade_surf.fill((0, 0, 0))
                 screen.blit(fade_surf, (0, 0))
                 if fade_timer >= FADE_OUT_DURATION:
-                    player.pos = pygame.Vector2(initial_player_pos)
-                    player.rect.topleft = initial_player_pos
-                    player.last_y_dir = 1
-                    if girlfriend_obj and initial_girlfriend_pos:
-                        girlfriend_obj.rect.topleft = initial_girlfriend_pos
-                    if john_obj and initial_john_pos:
-                        john_obj.rect.topleft = initial_john_pos
-                    girlfriend_following = False
-                    john_stopped = False
-                    showing_message = False
-                    treadmill_activated = False
-                    lives = MAX_LIVES
+                    # Try to restore from checkpoint if present
+                    restored_from_checkpoint = False
+                    if CHECKPOINT_FILE.exists():
+                        try:
+                            restored_from_checkpoint = load_checkpoint()
+                        except Exception:
+                            restored_from_checkpoint = False
+
+                    if not restored_from_checkpoint:
+                        # No valid checkpoint -> fallback to initial starting state
+                        player.pos = pygame.Vector2(initial_player_pos)
+                        player.rect.topleft = initial_player_pos
+                        player.last_y_dir = 1
+                        if girlfriend_obj and initial_girlfriend_pos:
+                            girlfriend_obj.rect.topleft = initial_girlfriend_pos
+                        if john_obj and initial_john_pos:
+                            john_obj.rect.topleft = initial_john_pos
+                        girlfriend_following = False
+                        john_stopped = False
+                        showing_message = False
+                        treadmill_activated = False
+                        lives = MAX_LIVES
+                    else:
+                        # Successfully restored from checkpoint:
+                        # ensure player.pos/rect are integers and camera offset applied already by load_checkpoint()
+                        player.pos = pygame.Vector2(int(player.rect.x), int(player.rect.y))
+                        player.rect.topleft = (int(player.rect.x), int(player.rect.y))
+                        # invulnerable and timers reset so player doesn't immediately die again
+                        invulnerable_timer = INVULNERABLE_DURATION
+                        showing_message = False
+                        # do NOT overwrite lives (load_checkpoint already set it)
+
                     fade_phase = "in"
                     fade_timer = 0.0
+
             elif fade_phase == "in":
                 fade_timer += dt
                 t = min(1.0, fade_timer / FADE_IN_DURATION)
