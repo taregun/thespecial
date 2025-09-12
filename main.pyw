@@ -29,7 +29,9 @@ ASSETS = {
     "tile": "Grass.png",
     "dirt": "Dirt.png",
     "girlfriend": "Girlfriend.png",
+    "girlfriend1": "Girlfriend1.png",  # optional - new
     "john": "John.png",
+    "john1": "John1.png",              # optional - new
     "mom": "Mom.png",
     "tree": "Tree.png",
     "tree2": "Tree2.png",
@@ -411,15 +413,41 @@ def main():
         if r not in imgs:
             raise FileNotFoundError(f"Required asset '{r}' not found: expected file '{ASSETS.get(r)}'")
 
+    # --- Try to locate *up* textures for John and Girlfriend ---
+    # Prefer keys "john1"/"girlfriend1" loaded into imgs (via ASSETS above).
+    # Otherwise look for files named "John1.png"/"john1.png" etc and load them.
+    john_up_img = None
+    girlfriend_up_img = None
+
+    # 1) check imgs dict keys
     if "john1" in imgs:
         john_up_img = imgs["john1"]
-    else:
-        john_up_img = imgs.get("john", imgs["john"])
-
     if "girlfriend1" in imgs:
         girlfriend_up_img = imgs["girlfriend1"]
-    else:
-        girlfriend_up_img = imgs.get("girlfriend", imgs["girlfriend"])
+
+    # 2) try common filenames on disk if not found in imgs
+    if john_up_img is None:
+        for fname in ("John1.png", "john1.png"):
+            if Path(fname).exists():
+                try:
+                    john_up_img = load_image(fname)
+                    break
+                except Exception:
+                    pass
+    if girlfriend_up_img is None:
+        for fname in ("Girlfriend1.png", "girlfriend1.png"):
+            if Path(fname).exists():
+                try:
+                    girlfriend_up_img = load_image(fname)
+                    break
+                except Exception:
+                    pass
+
+    # 3) fallback to main images
+    if john_up_img is None:
+        john_up_img = imgs.get("john")
+    if girlfriend_up_img is None:
+        girlfriend_up_img = imgs.get("girlfriend")
 
     heart_img = scale_to_tile(imgs["heart"], 32, 32, keep_aspect=True)
     intro1 = pygame.transform.scale(imgs["intro1"], (SCREEN_W, SCREEN_H))
@@ -880,6 +908,12 @@ def main():
                 clock.tick(60)
             continue
 
+        #next logic will preform delete_chekpoint() if r and enter are pressed in the same time and turn off the game so next time game is started it will be restarted
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_r] and keys[pygame.K_RETURN]:
+            delete_checkpoint()
+            running = False
+            continue
         if not fading:
             # For collisions, only use nearby obstacles (player-sized vicinity)
             nearby_obs = get_nearby_obstacles(player.rect, obstacles_list + tree2_objs)
@@ -1146,7 +1180,8 @@ def main():
             elif dialog_source == "goofy" and goofy_img:
                 img_w = goofy_img.get_width() + 16
                 screen.blit(goofy_img, (20, SCREEN_H - overlay_h + 10))
-            text_rect = pygame.Rect(20 + img_w, SCREEN_H - overlay_h + 10, SCREEN_W - (40 + img_w), overlay_h - 20)
+            text_rect = pygame.Rect(20 + img_w, SCREEN_H - overlay_h + 10,
+                                   SCREEN_W - (40 + img_w), overlay_h - 20)
             render_wrapped_text(screen, reveal_text, goofy_font, (255, 220, 220), text_rect)
             prompt = font.render("Press SPACE to close", True, (200, 200, 200))
             screen.blit(prompt, (SCREEN_W - prompt.get_width() - 16, SCREEN_H - prompt.get_height() - 8))
