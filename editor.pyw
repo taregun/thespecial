@@ -1,3 +1,4 @@
+# editor.pyw
 """
 editor.pyw
 Map editor for "The special" with Dirt background placement
@@ -24,6 +25,8 @@ ASSETS = {
     "treadmill": "Treadmill.png",  # treadmill added
     # goffy dog asset (optional)
     "goffyDog": "goffyDog.png",
+    # unknown NPC asset
+    "unknown": "unknown.png",
 }
 
 def load_image(name, colorkey=None):
@@ -140,7 +143,15 @@ def main():
             return None
         obj = WorldObject(imgs[key], tile_w, tile_h, pos, name=key)
         objects.add(obj)
-        map_objects.append({"type": key, "x": grid_x, "y": grid_y})
+        # Save a normalized type string for Maps.json
+        # For keys that should be lowercase "unknown" we'll store them lowercased
+        save_type = key
+        # normalize common mis-cases so the main loader recognizes them reliably
+        if key.lower() == "goffydog" or key.lower() == "goffydog":
+            save_type = "goffydog"
+        if key.lower() == "unknown":
+            save_type = "unknown"
+        map_objects.append({"type": save_type, "x": grid_x, "y": grid_y})
         return obj
 
     # Load objects from map (if present)
@@ -159,11 +170,21 @@ def main():
                 add_obj("treadmill", x, y, tile_w=6, tile_h=8)
             elif t == "dirt":
                 add_dirt(x, y)
-            elif t == "goffydog" or t == "goffyDog".lower():
+            elif t in ("goffydog", "goffydog".lower(), "goffydog".upper()):
+                # support existing naming variants
                 add_obj("goffyDog", x, y, tile_w=2, tile_h=2)
+            elif t == "unknown":
+                add_obj("unknown", x, y, tile_w=2, tile_h=2)
             else:
                 # generic object (girlfriend, john, mom, etc.)
-                add_obj(typ, x, y)
+                # try original case first; otherwise lowercased key
+                if typ in ASSETS:
+                    add_obj(typ, x, y)
+                elif t in ASSETS:
+                    add_obj(t, x, y)
+                else:
+                    # if unknown asset, still add raw entry to map_objects for safety
+                    map_objects.append({"type": typ, "x": x, "y": y})
 
     # Player
     if mapdata and "player" in mapdata:
@@ -179,7 +200,7 @@ def main():
     camera = Camera(SCREEN_W, SCREEN_H)
 
     # Scrollable object selection. Note: keys must match ASSETS keys (case-sensitive).
-    place_keys = ["girlfriend", "john", "mom", "tree", "tree2", "treadmill", "goffyDog", "dirt", "delete"]
+    place_keys = ["girlfriend", "john", "mom", "tree", "tree2", "treadmill", "goffyDog", "unknown", "dirt", "delete"]
     current_index = 0
 
     running = True
@@ -215,6 +236,8 @@ def main():
                         add_obj("tree", gx, gy, tile_w=2, tile_h=2)
                     elif current_obj == "goffyDog":
                         add_obj("goffyDog", gx, gy, tile_w=2, tile_h=2)
+                    elif current_obj == "unknown":
+                        add_obj("unknown", gx, gy, tile_w=2, tile_h=2)
                     else:
                         add_obj(current_obj, gx, gy)
                 elif ev.button == 4:  # scroll up

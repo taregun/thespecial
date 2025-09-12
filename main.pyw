@@ -43,7 +43,7 @@ ASSETS = {
     "wolf2": "Wolf2.png",
     "heart": "TheSpetial.png",
     "goofyDog": "goffyDog.png",
-    "Unknown": "unknown.png",
+    "unknown": "unknown.png",   # lowercase key
 }
 
 
@@ -372,6 +372,7 @@ def main():
         except Exception:
             pass
 
+    # fallback load for unknown if needed
     if "unknown" not in imgs:
         try:
             p = Path(ASSETS.get("unknown", ""))
@@ -449,8 +450,8 @@ def main():
     girlfriend_obj = None
     tree_objs = []
     tree2_objs = []
-    goofy_objs = []  # supports multiple goofy dogs
-    unknown_objs = []  # supports multiple goofy dogs
+    goofy_objs = []   # supports multiple goofy dogs
+    unknown_objs = []  # supports multiple unknown entities
 
     def add_dirt(grid_x, grid_y):
         img = imgs["dirt"]
@@ -501,9 +502,9 @@ def main():
             elif ("goof" in t or "goff" in t) and "dog" in t:
                 g = add_obj("goofyDog", x, y, tile_w=2, tile_h=2, solid=False)
                 goofy_objs.append(g)
-            elif t in ("unknown", "unknown", "unknown", "unknown", "unknown", "unknown"):
-                g = add_obj("unknown", x, y, tile_w=2, tile_h=2, solid=False)
-                goofy_objs.append(g)
+            elif t == "unknown":
+                u = add_obj("unknown", x, y, tile_w=2, tile_h=2, solid=False)
+                unknown_objs.append(u)
             else:
                 if typ in ASSETS:
                     add_obj(typ, x, y)
@@ -521,8 +522,9 @@ def main():
         tree2_objs.append(tree2_obj)
         treadmill_obj = add_obj("treadmill", 22, 10, 6, 8, solid=False)
         g = add_obj("goofyDog", 14, 9, 2, 2, solid=False)
-        g = add_obj("unknown", 14, 9, 2, 2, solid=False)
         goofy_objs.append(g)
+        u = add_obj("unknown", 16, 9, 2, 2, solid=False)
+        unknown_objs.append(u)
 
     if mapdata and "player" in mapdata:
         p = mapdata["player"]
@@ -564,8 +566,8 @@ def main():
         treadmill_obj.block_rect = pygame.Rect(hitbox_x, hitbox_y, hitbox_w, hitbox_h)
         treadmill_obj.interaction_rect = pygame.Rect(hitbox_x, hitbox_y, hitbox_w, hitbox_h)
 
-    # For goofy dogs: only create interaction rect (no block_rect so they don't pre-block)
-    for g in goofy_objs:
+    # For goofy dogs and unknowns: only create interaction rect (no block_rect so they don't pre-block)
+    for g in goofy_objs + unknown_objs:
         tw, th = g.rect.width, g.rect.height
         hitbox_w = int(tw / 2)
         hitbox_h = int(th / 3)
@@ -589,12 +591,12 @@ def main():
         except Exception:
             goofy_img = imgs["goofyDog"]
 
-    unknow_img = None
-    if "goofyDog" in imgs:
+    unknown_img = None
+    if "unknown" in imgs:
         try:
-            goofy_img = scale_to_tile(imgs["goofyDog"], TILE * 2, TILE * 2, keep_aspect=True)
+            unknown_img = scale_to_tile(imgs["unknown"], TILE * 2, TILE * 2, keep_aspect=True)
         except Exception:
-            goofy_img = imgs["goofyDog"]
+            unknown_img = imgs["unknown"]
 
     showing_message = False
     current_message = None
@@ -660,6 +662,12 @@ def main():
         "warning: 99% puppy energy, 1% existential dread.",
         "i accidentally ate the save file but it's fine, i'm just emotional.",
     ]
+
+    # Unknown fixed message
+    unknown_text = "You are trying to find it too? Huh! I became delusional trying. There is no special, hihihihihihi!!!! :::))))"
+
+    # dialog source indicates which image to show: "goofy" or "unknown"
+    dialog_source = "goofy"
 
     running = True
     while running:
@@ -865,6 +873,7 @@ def main():
                 if now_near and (not prev_near) and (not showing_goofy):
                     showing_goofy = True
                     goofy_text = random.choice(goofy_lines)
+                    dialog_source = "goofy"
                     goofy_timer = GOOFY_DURATION
                     goofy_start_time = time.time()
                     if not message_beep_playing:
@@ -877,6 +886,26 @@ def main():
                             pass
                 # update stored state
                 g.player_near = now_near
+
+            # Unknown entity trigger (behaves like goofy but has fixed text and different image)
+            for u in unknown_objs:
+                now_near = player.rect.colliderect(get_interaction_rect(u))
+                prev_near = getattr(u, "player_near", False)
+                if now_near and (not prev_near) and (not showing_goofy):
+                    showing_goofy = True
+                    goofy_text = unknown_text
+                    dialog_source = "unknown"
+                    goofy_timer = GOOFY_DURATION
+                    goofy_start_time = time.time()
+                    if not message_beep_playing:
+                        message_beep_playing = True
+                        message_beep_timer = 0.0
+                        message_beep_index = 0
+                        try:
+                            message_beeps[0].play()
+                        except Exception:
+                            pass
+                u.player_near = now_near
 
         camera.update(player.rect)
 
@@ -924,7 +953,11 @@ def main():
             overlay.fill((0, 0, 0, 180))
             screen.blit(overlay, (0, SCREEN_H - overlay_h))
             img_w = 0
-            if goofy_img:
+            # Show the appropriate image depending on source
+            if (dialog_source == "unknown") and unknown_img:
+                img_w = unknown_img.get_width() + 16
+                screen.blit(unknown_img, (20, SCREEN_H - overlay_h + 10))
+            elif dialog_source == "goofy" and goofy_img:
                 img_w = goofy_img.get_width() + 16
                 screen.blit(goofy_img, (20, SCREEN_H - overlay_h + 10))
             text_rect = pygame.Rect(20 + img_w, SCREEN_H - overlay_h + 10, SCREEN_W - (40 + img_w), overlay_h - 20)
@@ -934,6 +967,7 @@ def main():
             if goofy_timer <= 0:
                 showing_goofy = False
                 goofy_timer = 0.0
+                dialog_source = "goofy"
 
         if (not showing_goofy) and showing_message and current_message:
             overlay = pygame.Surface((SCREEN_W, current_message.get_height() + 20), pygame.SRCALPHA)
