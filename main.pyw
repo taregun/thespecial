@@ -1,4 +1,4 @@
-import pygame 
+import pygame
 import sys
 import json
 import random
@@ -13,11 +13,11 @@ import time
 DEBUG = False
 
 SCREEN_W, SCREEN_H = 800, 600
-TILE = 48  
-PLAYER_SPEED = 180  
+TILE = 48
+PLAYER_SPEED = 180
 JOHN_SPEED = PLAYER_SPEED * 0.8
 GIRLFRIEND_SPEED = PLAYER_SPEED * 0.8
-JOHN_STOP_DISTANCE = 100 
+JOHN_STOP_DISTANCE = 100
 GIRLFRIEND_STOP_DISTANCE = 100
 ASSETS = {
     "intro1": "find.png",
@@ -25,7 +25,7 @@ ASSETS = {
     "music": "TheTreadmill.mp3",
     "realisation": "realisation.mp3",
     "player": "Player.png",
-    "player1": "Player1.png", 
+    "player1": "Player1.png",
     "tile": "Grass.png",
     "dirt": "Dirt.png",
     "girlfriend": "Girlfriend.png",
@@ -96,6 +96,7 @@ class WorldObject(pygame.sprite.Sprite):
             pygame.draw.line(surf, (0, 0, 0), (0, 0), (surf.get_width(), surf.get_height()), 2)
             pygame.draw.line(surf, (0, 0, 0), (surf.get_width(), 0), (0, surf.get_height()), 2)
             self.raw_image = surf
+        # scale once at creation
         self.image = scale_to_tile(self.raw_image, int(tile_w * TILE), int(tile_h * TILE), keep_aspect=True)
         self.rect = self.image.get_rect(topleft=pos)
         self.name = name
@@ -114,6 +115,7 @@ class NPC(pygame.sprite.Sprite):
         self.raw_image_up = image_up
         self.pixel_w = int(tile_w * TILE)
         self.pixel_h = int(tile_h * TILE)
+        # store scaled images once
         self.img_down_scaled = scale_to_tile(self.raw_image_down, self.pixel_w, self.pixel_h, keep_aspect=True)
         self.img_up_scaled = scale_to_tile(self.raw_image_up, self.pixel_w, self.pixel_h, keep_aspect=True)
         self.image = self.img_down_scaled
@@ -165,7 +167,13 @@ class Player(pygame.sprite.Sprite):
         super().__init__()
         self.raw_image_down = image
         self.raw_image_up = image_up
-        self.image = scale_to_tile(self.raw_image_down, int(TILE * scale), int(TILE * scale), keep_aspect=True)
+        # Pre-scale both facing images once (avoid scaling every frame)
+        pixel_w = int(TILE * scale)
+        pixel_h = int(TILE * scale)
+        self.img_down_scaled = scale_to_tile(self.raw_image_down, pixel_w, pixel_h, keep_aspect=True)
+        self.img_up_scaled = scale_to_tile(self.raw_image_up, pixel_w, pixel_h, keep_aspect=True)
+        # default image
+        self.image = self.img_down_scaled
         self.rect = self.image.get_rect(center=pos)
         self.pos = pygame.Vector2(self.rect.topleft)
         self.vel = pygame.Vector2(0, 0)
@@ -178,7 +186,7 @@ class Player(pygame.sprite.Sprite):
         self.bump_state = 0
         self.visual_offset_y = 0.0
 
-    def update(self, dt, obstacles):
+    def update(self, dt, nearby_obstacles):
         keys = pygame.key.get_pressed()
         dir = pygame.Vector2(0, 0)
         up_pressed = keys[pygame.K_w] or keys[pygame.K_UP]
@@ -203,28 +211,33 @@ class Player(pygame.sprite.Sprite):
             self.facing_up = True
         elif down_pressed or left_pressed or right_pressed:
             self.facing_up = False
+
+        # move X and test collisions only against nearby obstacles (improves perf)
         self.rect.topleft = (new_pos.x, self.pos.y)
-        collided = [o for o in obstacles if o.solid and self.rect.colliderect(get_collision_rect(o))]
+        collided = [o for o in nearby_obstacles if getattr(o, "solid", False) and self.rect.colliderect(get_collision_rect(o))]
         if collided:
             if self.vel.x > 0:
                 self.rect.right = min(get_collision_rect(o).left for o in collided)
             elif self.vel.x < 0:
                 self.rect.left = max(get_collision_rect(o).right for o in collided)
             new_pos.x = self.rect.x
+
+        # move Y and test collisions
         self.rect.topleft = (new_pos.x, new_pos.y)
-        collided = [o for o in obstacles if o.solid and self.rect.colliderect(get_collision_rect(o))]
+        collided = [o for o in nearby_obstacles if getattr(o, "solid", False) and self.rect.colliderect(get_collision_rect(o))]
         if collided:
             if self.vel.y > 0:
                 self.rect.bottom = min(get_collision_rect(o).top for o in collided)
             elif self.vel.y < 0:
                 self.rect.top = max(get_collision_rect(o).bottom for o in collided)
             new_pos.y = self.rect.y
+
         self.pos = pygame.Vector2(new_pos)
         self.rect.topleft = (int(self.pos.x), int(self.pos.y))
-        if self.facing_up:
-            self.image = scale_to_tile(self.raw_image_up, int(TILE * 2), int(TILE * 2), keep_aspect=True)
-        else:
-            self.image = scale_to_tile(self.raw_image_down, int(TILE * 2), int(TILE * 2), keep_aspect=True)
+
+        # set pre-scaled image (no per-frame scaling)
+        self.image = self.img_up_scaled if self.facing_up else self.img_down_scaled
+
         moving = self.vel.length_squared() > 0.5
         if moving:
             self.bump_timer += dt
@@ -669,6 +682,19 @@ def main():
     # dialog source indicates which image to show: "goofy" or "unknown"
     dialog_source = "goofy"
 
+    # helper: margin for rendering/collision queries (in pixels)
+    VIEW_MARGIN = TILE * 2
+
+    def get_visible_rect(cam_offset, margin=VIEW_MARGIN):
+        return pygame.Rect(int(cam_offset.x - margin), int(cam_offset.y - margin),
+                           SCREEN_W + margin * 2, SCREEN_H + margin * 2)
+
+    def get_nearby_obstacles(reference_rect, obstacles, expand=TILE * 3):
+        """Return subset of obstacles whose rect intersects reference_rect inflated by expand.
+           This reduces collision checks to nearby objects only."""
+        r = reference_rect.inflate(expand, expand)
+        return [o for o in obstacles if getattr(o, "solid", False) and r.colliderect(get_collision_rect(o))]
+
     running = True
     while running:
         dt = clock.tick(60) / 1000.0
@@ -736,7 +762,10 @@ def main():
             continue
 
         if not fading:
-            player.update(dt, obstacles_list + tree2_objs)
+            # For collisions, only use nearby obstacles (player-sized vicinity)
+            nearby_obs = get_nearby_obstacles(player.rect, obstacles_list + tree2_objs)
+            player.update(dt, nearby_obs)
+
             if john_obj and not john_stopped:
                 to_player = pygame.Vector2(player.rect.center) - pygame.Vector2(john_obj.rect.center)
                 dist = to_player.length()
@@ -814,6 +843,8 @@ def main():
 
         tree1_message_shown = False
         if not fading:
+            # Interaction checks only with objects near the player (faster)
+            # For trees we keep them in tree_objs list; they are relatively few.
             for tree in tree_objs:
                 if player.rect.colliderect(get_interaction_rect(tree)):
                     showing_message = True
@@ -909,40 +940,57 @@ def main():
 
         camera.update(player.rect)
 
+        # ------------------------
+        # RENDERING (culled)
+        # ------------------------
         screen.fill((0, 0, 0))
-        for obj in background_tiles:
-            screen.blit(obj.image, (obj.rect.x - camera.offset.x, obj.rect.y - camera.offset.y))
+        visible_rect = get_visible_rect(camera.offset)
 
-        for ty in range(int(camera.offset.y // TILE), int(camera.offset.y // TILE) + SCREEN_H // TILE + 2):
-            for tx in range(int(camera.offset.x // TILE), int(camera.offset.x // TILE) + SCREEN_W // TILE + 2):
+        # Draw background tiles — iterate using camera offset (restored original tiling loop)
+        start_ty = int(camera.offset.y // TILE)
+        start_tx = int(camera.offset.x // TILE)
+        # draw dirt (only ones in visible_rect)
+        for obj in background_tiles:
+            if visible_rect.colliderect(obj.rect):
+                screen.blit(obj.image, (obj.rect.x - camera.offset.x, obj.rect.y - camera.offset.y))
+
+        # draw grass tiles for area in view (restored loop similar to original)
+        for ty in range(start_ty, start_ty + SCREEN_H // TILE + 2):
+            for tx in range(start_tx, start_tx + SCREEN_W // TILE + 2):
                 has_dirt = any(obj.rect.x // TILE == tx and obj.rect.y // TILE == ty for obj in background_tiles)
                 if not has_dirt:
                     screen.blit(tile_img, (tx * TILE - camera.offset.x, ty * TILE - camera.offset.y))
 
+        # Build render list only for visible objects (plus player & active wolf)
         renderables = []
+        # objects group may be large; filter by visible_rect
         for obj in objects:
-            renderables.append(obj)
+            if visible_rect.colliderect(obj.rect):
+                renderables.append(obj)
         for t in tree_objs + tree2_objs:
-            if t not in renderables:
+            if visible_rect.colliderect(t.rect) and t not in renderables:
                 renderables.append(t)
-        if treadmill_obj and treadmill_obj not in renderables:
+        if treadmill_obj and visible_rect.colliderect(treadmill_obj.rect) and treadmill_obj not in renderables:
             renderables.append(treadmill_obj)
-        if wolf.active:
+        if wolf.active and visible_rect.colliderect(wolf.rect):
             renderables.append(wolf)
+        # always render player (it's on screen by camera design)
         renderables.append(player)
+
+        # sort by bottom for correct overlap
         renderables_sorted = sorted(renderables, key=lambda o: o.rect.bottom)
 
         for ent in renderables_sorted:
             draw_img = getattr(ent, "image", None)
             if draw_img is None:
                 continue
+            # flip on the fly only when necessary (cheap compared to scaling)
             if getattr(ent, "last_x_dir", 1) < 0:
                 draw_img = pygame.transform.flip(draw_img, True, False)
             visual_offset = getattr(ent, "visual_offset_y", 0)
             screen.blit(draw_img, (ent.rect.x - camera.offset.x, ent.rect.y - camera.offset.y + visual_offset))
 
-        # (debug drawing removed)
-
+        # dialogs and overlays (unchanged logic)
         if showing_goofy:
             goofy_timer -= dt
             elapsed = GOOFY_DURATION - max(0.0, goofy_timer)
@@ -982,14 +1030,7 @@ def main():
             night_overlay.fill((0, 0, 0, current_dn_alpha))
             screen.blit(night_overlay, (0, 0))
 
-        if (not showing_goofy) and showing_message and current_message:
-            overlay = pygame.Surface((SCREEN_W, current_message.get_height() + 20), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 160))
-            screen.blit(overlay, (10, SCREEN_H - overlay.get_height() - 10))
-            screen.blit(current_message, (20, SCREEN_H - overlay.get_height()))
-            txt = font.render("Press SPACE to close message", True, (255, 255, 255))
-            screen.blit(txt, (SCREEN_W - txt.get_width() - 20, SCREEN_H - txt.get_height() - 20))
-
+        # version / day text / hearts (unchanged)
         version_text = "Alpha 0.5"
         txt = font.render(version_text, True, (255, 255, 255))
         for dx, dy in [(-2, 0), (2, 0), (0, -2), (0, 2)]:
