@@ -723,6 +723,7 @@ def main():
         "i love developer of this game, Tarik Ganić. now give me snacks!",
         "goofy dog says: that tree owes me 3 belly rubs and a donut.",
         "my goofy developer doesn't clean he's teeth that often.",
+        "my goofy developer made me say that he's the best, uh, well he is I guess :/...",
         "goofy wiseness",
         "my hair is 255 255 255, or is it?",
         "i am refrence to developer's dog, named Meri.",
