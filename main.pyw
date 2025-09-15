@@ -170,8 +170,11 @@ class NPC(pygame.sprite.Sprite):
 class Player(pygame.sprite.Sprite):
     def __init__(self, image, image_up, pos, scale=1):
         super().__init__()
+        # keep raw originals
         self.raw_image_down = image
         self.raw_image_up = image_up
+        # store scale so we can rescale later
+        self.scale = scale
         # Pre-scale both facing images once (avoid scaling every frame)
         pixel_w = int(TILE * scale)
         pixel_h = int(TILE * scale)
@@ -190,6 +193,20 @@ class Player(pygame.sprite.Sprite):
         self.bump_step_interval = 0.3
         self.bump_state = 0
         self.visual_offset_y = 0.0
+
+    def set_textures(self, new_down_image, new_up_image=None):
+        """Replace player's textures at runtime. new_up_image optional - falls back to new_down_image."""
+        if new_down_image is None:
+            return
+        self.raw_image_down = new_down_image
+        self.raw_image_up = new_up_image if (new_up_image is not None) else new_down_image
+        pixel_w = int(TILE * self.scale)
+        pixel_h = int(TILE * self.scale)
+        # rescale new images
+        self.img_down_scaled = scale_to_tile(self.raw_image_down, pixel_w, pixel_h, keep_aspect=True)
+        self.img_up_scaled = scale_to_tile(self.raw_image_up, pixel_w, pixel_h, keep_aspect=True)
+        # update current image according to facing
+        self.image = self.img_up_scaled if self.facing_up else self.img_down_scaled
 
     def update(self, dt, nearby_obstacles):
         keys = pygame.key.get_pressed()
@@ -407,6 +424,25 @@ def main():
                 imgs["checkpoint"] = load_image(str(p))
         except Exception:
             pass
+
+    # Try to load optional "Cool" textures if present on disk (non-fatal)
+    if "cool" not in imgs:
+        for fname in ("Cool.png", "cool.png"):
+            if Path(fname).exists():
+                try:
+                    imgs["cool"] = load_image(fname)
+                    break
+                except Exception:
+                    pass
+    if "cool1" not in imgs:
+        for fname in ("Cool1.png", "cool1.png"):
+            if Path(fname).exists():
+                try:
+                    imgs["cool1"] = load_image(fname)
+                    break
+                except Exception:
+                    pass
+    # Note: if only Cool.png exists, Cool1 will fallback to Cool (handled later).
 
     required = ["intro1", "intro2", "player", "player1", "tile", "dirt", "girlfriend", "john", "message", "message2", "message3", "message4", "end", "wolf1", "wolf2", "heart"]
     for r in required:
@@ -840,6 +876,11 @@ def main():
     checkpoint_saved_timer = 0.0
     CHECKPOINT_SAVED_DURATION = 2.0
 
+    # --- Secret typing variables ---
+    secret = "vudejezakon"
+    typing_buffer = ""
+    cool_mode = False  # prevents retrigger; set False if you want toggling instead
+
     running = True
     while running:
         dt = clock.tick(60) / 1000.0
@@ -888,6 +929,50 @@ def main():
                     # allow manual close
                     showing_goofy = False
                     goofy_timer = 0.0
+
+                # --- typing-secret handling ---
+                # Backspace: remove last char
+                if ev.key == pygame.K_BACKSPACE:
+                    typing_buffer = typing_buffer[:-1]
+                else:
+                    # use ev.unicode to get typed char (handles keyboard layout)
+                    ch = ev.unicode.lower() if hasattr(ev, "unicode") else ""
+                    if ch and ch.isalpha():
+                        typing_buffer += ch
+                        # keep buffer limited to secret length
+                        if len(typing_buffer) > len(secret):
+                            typing_buffer = typing_buffer[-len(secret):]
+
+                # check for match (only trigger once)
+                if (not cool_mode) and typing_buffer == secret:
+                    # attempt to switch textures
+                    down_img = imgs.get("cool")
+                    up_img = imgs.get("cool1", imgs.get("cool"))
+                    # if images weren't preloaded, try loading from disk now
+                    if down_img is None and Path("Cool.png").exists():
+                        try:
+                            down_img = load_image("Cool.png")
+                            imgs["cool"] = down_img
+                        except Exception:
+                            down_img = None
+                    if up_img is None and Path("Cool1.png").exists():
+                        try:
+                            up_img = load_image("Cool1.png")
+                            imgs["cool1"] = up_img
+                        except Exception:
+                            up_img = down_img
+                    # apply to player if we have at least a down image
+                    if down_img is not None:
+                        player.set_textures(down_img, up_img)
+                        cool_mode = True
+                        # clear buffer so it doesn't retrigger accidentally
+                        typing_buffer = ""
+                        if DEBUG:
+                            print("Secret typed: player textures switched to Cool.png / Cool1.png")
+                    else:
+                        # no Cool image available; optionally notify in DEBUG
+                        if DEBUG:
+                            print("Cool.png not found — make sure Cool.png (and optionally Cool1.png) are in the game folder.")
 
         if treadmill_activated:
             # delete checkpoint when the game is finished (as requested)
