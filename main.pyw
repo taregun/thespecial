@@ -335,7 +335,7 @@ def main():
         pass
 
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
-    pygame.display.set_caption("The special beta 0.5")
+    pygame.display.set_caption("The special beta 0.9")
     clock = pygame.time.Clock()
     font = pygame.font.SysFont("Arial", 28, bold=True)
     try:
