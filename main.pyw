@@ -28,6 +28,7 @@ ASSETS = {
     "player1": "Player1.png",
     "tile": "Grass.png",
     "dirt": "Dirt.png",
+    "water": "water.png",  # NEW: optional water tile
     "girlfriend": "Girlfriend.png",
     "girlfriend1": "Girlfriend1.png",  # optional - new
     "john": "John.png",
@@ -549,6 +550,23 @@ def main():
         obj = WorldObject(img, tile_w=1, tile_h=1, pos=pos, name="dirt", solid=False)
         background_tiles.add(obj)
 
+    def add_water(grid_x, grid_y):
+        """Water acts visually like dirt but is solid (blocks movement)."""
+        # if water graphic present use it, otherwise fallback to a tinted placeholder
+        if "water" in imgs:
+            img = imgs["water"]
+        else:
+            # create a blueish placeholder surface
+            surf = pygame.Surface((TILE, TILE), pygame.SRCALPHA)
+            surf.fill((50, 120, 200, 220))
+            pygame.draw.rect(surf, (20, 60, 120), surf.get_rect(), 2)
+            img = surf
+        pos = (int(grid_x * TILE), int(grid_y * TILE))
+        obj = WorldObject(img, tile_w=1, tile_h=1, pos=pos, name="water", solid=True)
+        # ensure it participates in collision checks
+        obstacles_list.append(obj)
+        background_tiles.add(obj)
+
     def add_obj(key, grid_x, grid_y, tile_w=1, tile_h=1, solid=True):
         img_down = imgs.get(key)
         if img_down is None:
@@ -572,6 +590,8 @@ def main():
             t = typ.lower() if isinstance(typ, str) else ""
             if t == "dirt":
                 add_dirt(x, y)
+            elif t == "water":
+                add_water(x, y)
             elif t == "john":
                 john_obj = add_obj("john", x, y, tile_w=2, tile_h=2, solid=False)
             elif t == "girlfriend":
@@ -1205,7 +1225,7 @@ def main():
         # Draw background tiles — iterate using camera offset (restored original tiling loop)
         start_ty = int(camera.offset.y // TILE)
         start_tx = int(camera.offset.x // TILE)
-        # draw dirt (only ones in visible_rect)
+        # draw dirt/water (only ones in visible_rect)
         for obj in background_tiles:
             if visible_rect.colliderect(obj.rect):
                 screen.blit(obj.image, (obj.rect.x - camera.offset.x, obj.rect.y - camera.offset.y))
@@ -1303,7 +1323,7 @@ def main():
             screen.blit(txt, (x + 10, y + 6))
 
         # version / day text / hearts (unchanged)
-        version_text = "beta 0.5"
+        version_text = "beta 0.9"
         txt = font.render(version_text, True, (255, 255, 255))
         for dx, dy in [(-2, 0), (2, 0), (0, -2), (0, 2)]:
             screen.blit(font.render(version_text, True, (0, 0, 0)), (10 + dx, 10 + dy))
@@ -1335,58 +1355,29 @@ def main():
                 t = min(1.0, fade_timer / FADE_OUT_DURATION)
                 fade_alpha = int(255 * t)
                 fade_surf = pygame.Surface((SCREEN_W, SCREEN_H))
-                fade_surf.set_alpha(fade_alpha)
                 fade_surf.fill((0, 0, 0))
+                fade_surf.set_alpha(fade_alpha)
                 screen.blit(fade_surf, (0, 0))
                 if fade_timer >= FADE_OUT_DURATION:
-                    # Try to restore from checkpoint if present
-                    restored_from_checkpoint = False
-                    if CHECKPOINT_FILE.exists():
-                        try:
-                            restored_from_checkpoint = load_checkpoint()
-                        except Exception:
-                            restored_from_checkpoint = False
-
-                    if not restored_from_checkpoint:
-                        # No valid checkpoint -> fallback to initial starting state
-                        player.pos = pygame.Vector2(initial_player_pos)
-                        player.rect.topleft = initial_player_pos
-                        player.last_y_dir = 1
-                        if girlfriend_obj and initial_girlfriend_pos:
-                            girlfriend_obj.rect.topleft = initial_girlfriend_pos
-                        if john_obj and initial_john_pos:
-                            john_obj.rect.topleft = initial_john_pos
-                        girlfriend_following = False
-                        john_stopped = False
-                        showing_message = False
-                        treadmill_activated = False
-                        lives = MAX_LIVES
-                    else:
-                        # Successfully restored from checkpoint:
-                        # ensure player.pos/rect are integers and camera offset applied already by load_checkpoint()
-                        player.pos = pygame.Vector2(int(player.rect.x), int(player.rect.y))
-                        player.rect.topleft = (int(player.rect.x), int(player.rect.y))
-                        # invulnerable and timers reset so player doesn't immediately die again
-                        invulnerable_timer = INVULNERABLE_DURATION
-                        showing_message = False
-                        # do NOT overwrite lives (load_checkpoint already set it)
-
+                    # restart game
+                    player.pos = pygame.Vector2(initial_player_pos)
+                    player.rect.topleft = (int(initial_player_pos[0]), int(initial_player_pos[1]))
+                    lives = MAX_LIVES
+                    invulnerable_timer = 0.0
                     fade_phase = "in"
                     fade_timer = 0.0
-
             elif fade_phase == "in":
                 fade_timer += dt
                 t = min(1.0, fade_timer / FADE_IN_DURATION)
                 fade_alpha = int(255 * (1.0 - t))
                 fade_surf = pygame.Surface((SCREEN_W, SCREEN_H))
-                fade_surf.set_alpha(fade_alpha)
                 fade_surf.fill((0, 0, 0))
+                fade_surf.set_alpha(fade_alpha)
                 screen.blit(fade_surf, (0, 0))
                 if fade_timer >= FADE_IN_DURATION:
                     fading = False
                     fade_phase = None
                     fade_timer = 0.0
-                    fade_alpha = 0
 
         pygame.display.flip()
 

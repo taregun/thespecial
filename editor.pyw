@@ -2,6 +2,7 @@
 editor.pyw
 Map editor for "The special" with Dirt background placement
 Added: checkpoint placement support ("checkpoint.png").
+Now supports placing water (water.png) — water acts like dirt visually but is solid in the game.
 """
 
 import pygame
@@ -17,6 +18,7 @@ ASSETS = {
     "player": "player.png",
     "tile": "Grass.png",
     "dirt": "Dirt.png",
+    "water": "water.png",  # NEW: optional water tile
     "girlfriend": "Girlfriend.png",
     "john": "John.png",
     "mom": "Mom.png",
@@ -144,6 +146,21 @@ def main():
         background_tiles.add(obj)
         map_objects.append({"type": "dirt", "x": grid_x, "y": grid_y})
 
+    def add_water(grid_x, grid_y):
+        """Place water background tile. Visually like dirt but marked solid for the main game."""
+        pos = (grid_x*TILE, grid_y*TILE)
+        if "water" in imgs:
+            img = imgs["water"]
+        else:
+            # placeholder blue tile if water.png missing
+            surf = pygame.Surface((TILE, TILE), pygame.SRCALPHA)
+            surf.fill((50, 120, 200, 220))
+            pygame.draw.rect(surf, (20, 60, 120), surf.get_rect(), 2)
+            img = surf
+        obj = WorldObject(img, tile_w=1, tile_h=1, pos=pos, name="water", solid=True)
+        background_tiles.add(obj)
+        map_objects.append({"type": "water", "x": grid_x, "y": grid_y})
+
     def make_placeholder(tile_w, tile_h, label=None):
         surf = pygame.Surface((int(tile_w*TILE), int(tile_h*TILE)), pygame.SRCALPHA)
         surf.fill((200, 50, 200, 180))
@@ -194,6 +211,8 @@ def main():
                 add_obj("treadmill", x, y, tile_w=6, tile_h=8)
             elif t == "dirt":
                 add_dirt(x, y)
+            elif t == "water":
+                add_water(x, y)
             elif t in ("goffydog", "goffydog"):
                 # support existing naming variants
                 add_obj("goffyDog", x, y, tile_w=2, tile_h=2)
@@ -226,7 +245,7 @@ def main():
     camera = Camera(SCREEN_W, SCREEN_H)
 
     # Scrollable object selection. Note: keys must match ASSETS keys (case-sensitive).
-    place_keys = ["girlfriend", "john", "mom", "tree", "tree2", "treadmill", "goffyDog", "unknown", "checkpoint", "dirt", "delete"]
+    place_keys = ["girlfriend", "john", "mom", "tree", "tree2", "treadmill", "goffyDog", "unknown", "checkpoint", "dirt", "water", "delete"]
     current_index = 0
 
     running = True
@@ -254,6 +273,8 @@ def main():
                                 break
                     elif current_obj == "dirt":
                         add_dirt(gx, gy)
+                    elif current_obj == "water":
+                        add_water(gx, gy)
                     elif current_obj == "treadmill":
                         add_obj("treadmill", gx, gy, tile_w=6, tile_h=8)
                     elif current_obj == "tree2":
@@ -282,7 +303,7 @@ def main():
         # Draw
         screen.fill((0,0,0))
 
-        # Draw dirt background first
+        # Draw dirt/water background first
         for obj in background_tiles:
             screen.blit(obj.image, (obj.rect.x - camera.offset.x, obj.rect.y - camera.offset.y))
 
